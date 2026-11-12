@@ -6,6 +6,14 @@
       button.addEventListener("click", async (e) => {
         e.preventDefault();
 
+        const loginUrl = "/users/login/?next=" + encodeURIComponent(window.location.pathname + window.location.search);
+
+        // Незалогиненного пользователя просим войти или зарегистрироваться.
+        if (button.dataset.auth === "false") {
+          askToLogin(loginUrl);
+          return;
+        }
+
         const projectId = button.dataset.projectId;
         const isFav = button.dataset.fav === "true";
         const response = await fetch(`/projects/${projectId}/toggle-favorite/`, {
@@ -16,6 +24,11 @@
           },
           body: JSON.stringify({})
         });
+
+        if (response.status === 401) {
+          askToLogin(loginUrl);
+          return;
+        }
 
         if (response.ok) {
           if (isFavoritesPage && isFav) {
@@ -45,6 +58,16 @@
       });
     });
   });
+
+  function askToLogin(loginUrl) {
+    const message = "Чтобы добавить проект в избранное, войдите или зарегистрируйтесь";
+    if (window.toast) {
+      window.toast(message, { type: "info" });
+      setTimeout(() => { window.location.href = loginUrl; }, 1500);
+    } else if (confirm(message + ". Перейти на страницу входа?")) {
+      window.location.href = loginUrl;
+    }
+  }
 
   function getCookie(name) {
     let cookieValue = null;
