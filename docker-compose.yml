@@ -36,9 +36,9 @@ services:
     ports:
       - "${WEB_PORT:-8001}:8000"
     volumes:
-      - media_data:/app/media
+      # Общая с хостом папка media: аватары видны и при runserver, и в контейнере
+      - ./media:/app/media
     restart: unless-stopped
 
 volumes:
   postgres_data:
-  media_data:

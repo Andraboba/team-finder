@@ -126,7 +126,7 @@ docker compose exec web python manage.py seed_data
 
 Контейнер `web` при старте выполняет `migrate` и `collectstatic`, затем
 запускает gunicorn. Сайт будет на http://localhost:8001 (порт меняется
-переменной `WEB_PORT`). Статику раздаёт whitenoise, медиа — Django.
+переменной `WEB_PORT`). Статику раздаёт whitenoise, медиа — Django; папка `media` общая с хостом.
 
 ## Тестовые аккаунты
 
