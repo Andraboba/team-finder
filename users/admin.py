@@ -31,7 +31,7 @@ class UserAdmin(BaseUserAdmin):
     search_fields = ("email", "name", "surname", "phone")
     ordering = ("-id",)
     readonly_fields = ("date_joined", "last_login")
-    filter_horizontal = ("favorites", "groups", "user_permissions")
+    filter_horizontal = ("groups", "user_permissions")
 
     fieldsets = (
         (None, {"fields": ("email", "password")}),
@@ -39,7 +39,6 @@ class UserAdmin(BaseUserAdmin):
             "Личные данные",
             {"fields": ("name", "surname", "avatar", "phone", "github_url", "about")},
         ),
-        ("Избранное", {"fields": ("favorites",)}),
         (
             "Права доступа",
             {

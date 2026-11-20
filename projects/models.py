@@ -2,6 +2,20 @@ from django.conf import settings
 from django.db import models
 
 
+class Skill(models.Model):
+    """Навык, необходимый проекту (вариант 3)."""
+
+    name = models.CharField("Название", max_length=124, unique=True)
+
+    class Meta:
+        verbose_name = "Навык"
+        verbose_name_plural = "Навыки"
+        ordering = ("name",)
+
+    def __str__(self):
+        return self.name
+
+
 class Project(models.Model):
     STATUS_OPEN = "open"
     STATUS_CLOSED = "closed"
@@ -27,6 +41,15 @@ class Project(models.Model):
         settings.AUTH_USER_MODEL,
         verbose_name="Участники",
         related_name="participated_projects",
+        blank=True,
+    )
+    # В задании поле названо «внешний ключ на Skill», но у проекта может быть
+    # несколько навыков, а у навыка — несколько проектов (skill.projects),
+    # поэтому связь — многие-ко-многим.
+    skills = models.ManyToManyField(
+        Skill,
+        verbose_name="Необходимые навыки",
+        related_name="projects",
         blank=True,
     )
 

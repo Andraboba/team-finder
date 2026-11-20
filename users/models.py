@@ -59,12 +59,6 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_active = models.BooleanField("Активен", default=True)
     is_staff = models.BooleanField("Администратор", default=False)
     date_joined = models.DateTimeField("Дата регистрации", auto_now_add=True)
-    favorites = models.ManyToManyField(
-        "projects.Project",
-        verbose_name="Избранные проекты",
-        related_name="interested_users",
-        blank=True,
-    )
 
     objects = UserManager()
 

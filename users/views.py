@@ -9,51 +9,15 @@ from .forms import ChangePasswordForm, LoginForm, ProfileEditForm, RegisterForm
 
 User = get_user_model()
 
-# Значения параметра ?filter= берутся из шаблона users/participants.html.
-FILTER_FAVORITE_OWNERS = "owners-of-favorite-projects"
-FILTER_PARTICIPATING_OWNERS = "owners-of-participating-projects"
-FILTER_INTERESTED = "interested-in-my-projects"
-FILTER_MY_PARTICIPANTS = "participants-of-my-projects"
-
-
-def filter_users(queryset, user, filter_name):
-    """Фильтрует пользователей по одному из четырёх критериев варианта 1.
-
-    Текущий пользователь из результата исключается: он является автором
-    и участником собственных проектов, и показывать его самому себе
-    в таких подборках бессмысленно.
-    """
-    if filter_name == FILTER_FAVORITE_OWNERS:
-        # Авторы проектов, которые я добавил в избранное.
-        queryset = queryset.filter(owned_projects__interested_users=user)
-    elif filter_name == FILTER_PARTICIPATING_OWNERS:
-        # Авторы проектов, в которых я участвую.
-        queryset = queryset.filter(owned_projects__participants=user)
-    elif filter_name == FILTER_INTERESTED:
-        # Пользователи, добавившие мои проекты в избранное.
-        queryset = queryset.filter(favorites__owner=user)
-    elif filter_name == FILTER_MY_PARTICIPANTS:
-        # Участники моих проектов.
-        queryset = queryset.filter(participated_projects__owner=user)
-    else:
-        return queryset, None
-    return queryset.exclude(pk=user.pk).distinct(), filter_name
-
 
 def user_list(request):
     participants = User.objects.filter(is_active=True).order_by("-id")
-    active_filter = None
-    if request.user.is_authenticated:
-        participants, active_filter = filter_users(
-            participants, request.user, request.GET.get("filter")
-        )
     paginator = Paginator(participants, settings.PAGINATE_BY)
     page_obj = paginator.get_page(request.GET.get("page"))
     context = {
         "participants": participants,
         "page_obj": page_obj,
-        "active_filter": active_filter,
-        "query_prefix": f"filter={active_filter}&" if active_filter else "",
+        "query_prefix": "",
     }
     return render(request, "users/participants.html", context)
 

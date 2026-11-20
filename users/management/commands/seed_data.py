@@ -10,7 +10,7 @@ from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
-from projects.models import Project
+from projects.models import Project, Skill
 
 User = get_user_model()
 
@@ -108,17 +108,29 @@ PARTICIPATIONS = {
     "petr@example.com": ["Портфолио-конструктор"],
 }
 
-# email пользователя -> названия избранных проектов
-FAVORITES = {
-    "maria@yandex.ru": ["Портфолио-конструктор", "Домашний CI-сервер"],
-    "ivan@example.com": ["Трекер привычек", "Дизайн-система для НКО"],
-    "olga@example.com": ["Трекер привычек"],
-    "petr@example.com": ["Бот для книжного клуба", "Портфолио-конструктор"],
+# Справочник навыков: часть из них пока не привязана ни к одному проекту
+# и доступна в автодополнении.
+SKILLS = [
+    "Django", "Python", "PostgreSQL", "JavaScript", "React", "TypeScript",
+    "Figma", "UX/UI", "Docker", "Linux", "CI/CD", "Telegram Bot API",
+    "HTML/CSS", "Git", "Go", "C++",
+]
+
+# название проекта -> необходимые навыки
+PROJECT_SKILLS = {
+    "Трекер привычек": ["Python", "Django", "PostgreSQL", "JavaScript"],
+    "Бот для книжного клуба": ["Python", "Telegram Bot API"],
+    "Портфолио-конструктор": ["React", "TypeScript", "HTML/CSS", "Figma"],
+    "Дизайн-система для НКО": ["Figma", "UX/UI", "HTML/CSS"],
+    "Домашний CI-сервер": ["Docker", "Linux", "CI/CD", "Go"],
 }
 
 
 class Command(BaseCommand):
-    help = "Создаёт суперпользователя, тестовых пользователей, проекты, участия и избранное."
+    help = (
+        "Создаёт суперпользователя, тестовых пользователей, проекты, "
+        "участия и необходимые навыки проектов."
+    )
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -170,7 +182,15 @@ class Command(BaseCommand):
             for name in names:
                 projects[name].participants.add(users[email])
 
-        for email, names in FAVORITES.items():
-            users[email].favorites.add(*(projects[name] for name in names))
+        skills = {}
+        for name in SKILLS:
+            skills[name], created = Skill.objects.get_or_create(name=name)
+            if created:
+                self.stdout.write(f"Создан навык «{name}»")
+
+        for project_name, skill_names in PROJECT_SKILLS.items():
+            projects[project_name].skills.add(
+                *(skills[name] for name in skill_names)
+            )
 
         self.stdout.write(self.style.SUCCESS("Тестовые данные загружены."))
