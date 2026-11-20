@@ -203,70 +203,33 @@ class PhoneAndGithubValidationTests(BaseTestCase):
         self.assertContains(response, "form-errors")
 
 
-class UserListFilterTests(BaseTestCase):
-    """me: избранное и участия; проверяем все четыре фильтра."""
+class UserListTests(BaseTestCase):
+    """В варианте 3 список пользователей выводится без фильтров."""
 
     def setUp(self):
         self.me = self.make_user("me@example.com", name="Я")
-        self.fav_owner = self.make_user("fav@example.com", name="Автор-избранного")
-        self.part_owner = self.make_user("part@example.com", name="Автор-участия")
-        self.fan = self.make_user("fan@example.com", name="Поклонник")
-        self.member = self.make_user("member@example.com", name="Участник")
-        self.stranger = self.make_user("stranger@example.com", name="Чужой")
+        self.other = self.make_user("other@example.com", name="Другой")
+        Project.objects.create(name="Mine", owner=self.me).participants.add(self.me)
 
-        fav_project = Project.objects.create(name="Fav", owner=self.fav_owner)
-        part_project = Project.objects.create(name="Part", owner=self.part_owner)
-        my_project = Project.objects.create(name="Mine", owner=self.me)
-        my_project.participants.add(self.me, self.member)
-        part_project.participants.add(self.part_owner, self.me)
-        self.me.favorites.add(fav_project, my_project)
-        self.fan.favorites.add(my_project)
-
-    def get_ids(self, filter_name=None):
-        params = {"filter": filter_name} if filter_name else {}
-        response = self.client.get(reverse("users:user_list"), params)
+    def get_ids(self, params=None):
+        response = self.client.get(reverse("users:user_list"), params or {})
         self.assertEqual(response.status_code, 200)
-        return {u.id for u in response.context["page_obj"]}, response
+        return [u.id for u in response.context["page_obj"]], response
 
-    def test_list_without_filter(self):
-        ids, _ = self.get_ids()
-        self.assertEqual(ids, set(User.objects.values_list("id", flat=True)))
+    def test_list_all_users_newest_first(self):
+        ids, response = self.get_ids()
+        self.assertEqual(ids, [self.other.id, self.me.id])
+        self.assertTemplateUsed(response, "users/participants.html")
+        self.assertIn("participants", response.context)
 
-    def test_filter_ignored_for_anonymous(self):
-        ids, response = self.get_ids("owners-of-favorite-projects")
-        self.assertEqual(len(ids), User.objects.count())
-        self.assertIsNone(response.context["active_filter"])
-
-    def test_owners_of_favorite_projects(self):
+    def test_filter_param_ignored(self):
         self.client.force_login(self.me)
-        ids, response = self.get_ids("owners-of-favorite-projects")
-        self.assertEqual(ids, {self.fav_owner.id})
-        self.assertEqual(response.context["active_filter"],
-                         "owners-of-favorite-projects")
-
-    def test_owners_of_participating_projects(self):
-        self.client.force_login(self.me)
-        ids, _ = self.get_ids("owners-of-participating-projects")
-        self.assertEqual(ids, {self.part_owner.id})
-
-    def test_interested_in_my_projects(self):
-        self.client.force_login(self.me)
-        ids, _ = self.get_ids("interested-in-my-projects")
-        self.assertEqual(ids, {self.fan.id})
-
-    def test_participants_of_my_projects(self):
-        self.client.force_login(self.me)
-        ids, _ = self.get_ids("participants-of-my-projects")
-        self.assertEqual(ids, {self.member.id})
-
-    def test_unknown_filter_shows_all(self):
-        self.client.force_login(self.me)
-        ids, response = self.get_ids("something-else")
-        self.assertEqual(len(ids), User.objects.count())
-        self.assertIsNone(response.context["active_filter"])
+        ids, response = self.get_ids({"filter": "participants-of-my-projects"})
+        self.assertEqual(len(ids), 2)
+        self.assertNotContains(response, "filter-chip")
 
     def test_pagination_12_per_page(self):
-        for i in range(10):
+        for i in range(14):
             self.make_user(f"extra{i}@example.com")
         response = self.client.get(reverse("users:user_list"))
         self.assertEqual(len(response.context["page_obj"]), 12)

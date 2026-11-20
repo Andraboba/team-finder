@@ -1,11 +1,12 @@
+import json
 import shutil
 import tempfile
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
-from django.urls import reverse
+from django.urls import reverse, reverse_lazy
 
-from .models import Project
+from .models import Project, Skill
 
 User = get_user_model()
 
@@ -64,9 +65,11 @@ class ProjectPagesTests(ProjectTestCase):
         response = self.client.get(reverse("projects:project_detail", args=[999]))
         self.assertEqual(response.status_code, 404)
 
-    def test_anonymous_sees_login_prompt_heart(self):
+    def test_no_favorites_in_variant_3(self):
         response = self.client.get(reverse("projects:project_list"))
-        self.assertContains(response, 'data-auth="false"')
+        self.assertNotContains(response, "project-fav-icon")
+        self.assertNotContains(response, "/projects/favorites")
+        self.assertEqual(self.client.get("/projects/favorites/").status_code, 404)
 
 
 class CreateEditProjectTests(ProjectTestCase):
@@ -200,50 +203,290 @@ class ToggleParticipateTests(ProjectTestCase):
         self.assertEqual(self.project.participants.count(), 1)
 
 
-class FavoritesTests(ProjectTestCase):
-    def url(self, project=None):
+class SkillTestCase(ProjectTestCase):
+    def setUp(self):
+        super().setUp()
+        self.python = Skill.objects.create(name="Python")
+        self.django = Skill.objects.create(name="Django")
+        self.docker = Skill.objects.create(name="Docker")
+
+    def add_url(self, project=None):
+        return reverse("projects:add_skill", args=[(project or self.project).id])
+
+    def remove_url(self, skill, project=None):
         return reverse(
-            "projects:toggle_favorite", args=[(project or self.project).id]
+            "projects:remove_skill", args=[(project or self.project).id, skill.id]
         )
 
-    def test_toggle_favorite(self):
+    def post_json(self, url, data):
+        return self.client.post(
+            url, json.dumps(data), content_type="application/json"
+        )
+
+
+class SkillAutocompleteTests(SkillTestCase):
+    url = reverse_lazy("projects:skill_autocomplete")
+
+    def test_startswith_and_alphabetical(self):
+        Skill.objects.create(name="Dart")
+        Skill.objects.create(name="Go")
+        response = self.client.get(self.url, {"q": "D"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [s["name"] for s in response.json()], ["Dart", "Django", "Docker"]
+        )
+
+    def test_response_format(self):
+        response = self.client.get(self.url, {"q": "pyt"})
+        self.assertEqual(response.json(), [{"id": self.python.id, "name": "Python"}])
+
+    def test_only_startswith_not_contains(self):
+        response = self.client.get(self.url, {"q": "ython"})
+        self.assertEqual(response.json(), [])
+
+    def test_limit_10(self):
+        for i in range(15):
+            Skill.objects.create(name=f"Skill {i:02d}")
+        response = self.client.get(self.url, {"q": "Skill"})
+        names = [s["name"] for s in response.json()]
+        self.assertEqual(len(names), 10)
+        self.assertEqual(names, sorted(names))
+        self.assertEqual(names[0], "Skill 00")
+
+    def test_post_not_allowed(self):
+        self.assertEqual(self.client.post(self.url).status_code, 405)
+
+
+class AddSkillTests(SkillTestCase):
+    def test_add_existing_by_id(self):
+        self.client.force_login(self.owner)
+        response = self.post_json(self.add_url(), {"skill_id": self.python.id})
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["skill_id"], self.python.id)
+        self.assertFalse(data["created"])
+        self.assertTrue(data["added"])
+        self.assertEqual(data["name"], "Python")
+        self.assertIn(self.python, self.project.skills.all())
+        self.assertIn(self.project, self.python.projects.all())
+
+    def test_add_new_by_name(self):
+        self.client.force_login(self.owner)
+        response = self.post_json(self.add_url(), {"name": "  Kotlin "})
+        skill = Skill.objects.get(name="Kotlin")
+        self.assertEqual(
+            response.json(),
+            {
+                "skill_id": skill.id,
+                "created": True,
+                "added": True,
+                "id": skill.id,
+                "name": "Kotlin",
+            },
+        )
+        self.assertIn(skill, self.project.skills.all())
+
+    def test_add_by_name_reuses_existing_skill(self):
+        self.client.force_login(self.owner)
+        response = self.post_json(self.add_url(), {"name": "python"})
+        data = response.json()
+        self.assertEqual(data["skill_id"], self.python.id)
+        self.assertFalse(data["created"])
+        self.assertTrue(data["added"])
+        self.assertEqual(Skill.objects.filter(name__iexact="python").count(), 1)
+
+    def test_repeat_add_returns_added_false(self):
+        self.project.skills.add(self.python)
+        self.client.force_login(self.owner)
+        response = self.post_json(self.add_url(), {"skill_id": self.python.id})
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()["added"])
+        self.assertFalse(response.json()["created"])
+        self.assertEqual(self.project.skills.count(), 1)
+
+    def test_add_with_form_data_and_url_without_slash(self):
+        self.client.force_login(self.owner)
+        url = f"/projects/{self.project.id}/skills/add"
+        response = self.client.post(url, {"skill_id": self.docker.id})
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["added"])
+        self.assertIn(self.docker, self.project.skills.all())
+
+    def test_add_invalid_requests(self):
+        self.client.force_login(self.owner)
+        for data, status in (
+            ({}, 400),
+            ({"name": "   "}, 400),
+            ({"skill_id": "abc"}, 400),
+            ({"skill_id": 99999}, 404),
+            ({"name": "x" * 125}, 400),
+        ):
+            with self.subTest(data=data):
+                response = self.post_json(self.add_url(), data)
+                self.assertEqual(response.status_code, status)
+        self.assertEqual(self.project.skills.count(), 0)
+
+    def test_not_owner_forbidden(self):
         self.client.force_login(self.other)
-        response = self.client.post(self.url())
-        self.assertEqual(response.json(), {"status": "ok", "favorited": True})
-        self.assertIn(self.project, self.other.favorites.all())
-        self.assertIn(self.other, self.project.interested_users.all())
+        response = self.post_json(self.add_url(), {"name": "Hack"})
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(Skill.objects.filter(name="Hack").exists())
+        self.assertEqual(self.project.skills.count(), 0)
 
-        response = self.client.post(self.url())
-        self.assertEqual(response.json(), {"status": "ok", "favorited": False})
-        self.assertNotIn(self.project, self.other.favorites.all())
-
-    def test_toggle_favorite_anonymous(self):
-        response = self.client.post(self.url())
+    def test_anonymous_unauthorized(self):
+        response = self.post_json(self.add_url(), {"skill_id": self.python.id})
         self.assertEqual(response.status_code, 401)
-        self.assertEqual(response.json()["status"], "error")
-        self.assertIn("login_url", response.json())
+        self.assertEqual(self.project.skills.count(), 0)
 
-    def test_toggle_favorite_404(self):
-        self.client.force_login(self.other)
-        response = self.client.post(reverse("projects:toggle_favorite", args=[999]))
+    def test_project_404(self):
+        self.client.force_login(self.owner)
+        response = self.post_json(
+            reverse("projects:add_skill", args=[99999]), {"name": "X"}
+        )
         self.assertEqual(response.status_code, 404)
 
-    def test_favorites_page_shows_only_own_favorites(self):
-        second = Project.objects.create(name="Второй", owner=self.owner)
-        self.other.favorites.add(self.project)
-        self.owner.favorites.add(second)
-        self.client.force_login(self.other)
-        response = self.client.get(reverse("projects:favorites"))
+    def test_get_not_allowed(self):
+        self.client.force_login(self.owner)
+        self.assertEqual(self.client.get(self.add_url()).status_code, 405)
+
+
+class RemoveSkillTests(SkillTestCase):
+    def setUp(self):
+        super().setUp()
+        self.project.skills.add(self.python, self.django)
+
+    def test_owner_removes_skill_but_skill_stays_in_db(self):
+        self.client.force_login(self.owner)
+        response = self.client.post(self.remove_url(self.python))
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(list(response.context["projects"]), [self.project])
-        self.assertTemplateUsed(response, "projects/favorite_projects.html")
+        self.assertEqual(response.json()["status"], "ok")
+        self.assertNotIn(self.python, self.project.skills.all())
+        self.assertIn(self.django, self.project.skills.all())
+        self.assertTrue(Skill.objects.filter(pk=self.python.pk).exists())
 
-    def test_favorites_page_requires_login(self):
-        response = self.client.get(reverse("projects:favorites"))
-        self.assertEqual(response.status_code, 302)
-
-    def test_heart_marked_for_favorite(self):
-        self.other.favorites.add(self.project)
+    def test_not_owner_forbidden(self):
         self.client.force_login(self.other)
-        response = self.client.get(reverse("projects:project_list"))
-        self.assertContains(response, 'data-fav="true"')
+        response = self.client.post(self.remove_url(self.python))
+        self.assertEqual(response.status_code, 403)
+        self.assertIn(self.python, self.project.skills.all())
+
+    def test_anonymous_unauthorized(self):
+        response = self.client.post(self.remove_url(self.python))
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(self.project.skills.count(), 2)
+
+    def test_skill_not_in_project(self):
+        self.client.force_login(self.owner)
+        response = self.client.post(self.remove_url(self.docker))
+        self.assertEqual(response.status_code, 400)
+
+    def test_missing_skill_and_project(self):
+        self.client.force_login(self.owner)
+        response = self.client.post(
+            reverse("projects:remove_skill", args=[self.project.id, 99999])
+        )
+        self.assertEqual(response.status_code, 404)
+        response = self.client.post(
+            reverse("projects:remove_skill", args=[99999, self.python.id])
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_get_not_allowed(self):
+        self.client.force_login(self.owner)
+        self.assertEqual(
+            self.client.get(self.remove_url(self.python)).status_code, 405
+        )
+
+
+class ProjectSkillsPageTests(SkillTestCase):
+    def setUp(self):
+        super().setUp()
+        self.project.skills.add(self.python)
+
+    def detail(self):
+        return self.client.get(
+            reverse("projects:project_detail", args=[self.project.id])
+        )
+
+    def test_owner_sees_controls(self):
+        self.client.force_login(self.owner)
+        response = self.detail()
+        self.assertContains(response, "Необходимые навыки")
+        self.assertContains(response, "Python")
+        self.assertContains(response, 'id="add-skill-btn"')
+        self.assertContains(response, "remove-skill-btn")
+
+    def test_other_user_and_anonymous_only_see_list(self):
+        for user in (self.other, None):
+            with self.subTest(user=user):
+                self.client.logout()
+                if user:
+                    self.client.force_login(user)
+                response = self.detail()
+                self.assertContains(response, "Python")
+                self.assertNotContains(response, 'id="add-skill-btn"')
+                self.assertNotContains(response, "remove-skill-btn")
+
+    def test_empty_skills(self):
+        self.project.skills.clear()
+        self.assertContains(self.detail(), "Навыки не указаны")
+
+
+class ProjectSkillFilterTests(SkillTestCase):
+    def setUp(self):
+        super().setUp()
+        self.project.skills.add(self.python, self.django)
+        self.second = Project.objects.create(name="Второй", owner=self.other)
+        self.second.skills.add(self.docker)
+        self.cpp = Skill.objects.create(name="C++")
+        self.third = Project.objects.create(name="Третий", owner=self.other)
+        self.third.skills.add(self.cpp, self.python)
+
+    def get(self, params=None):
+        response = self.client.get(reverse("projects:project_list"), params or {})
+        self.assertEqual(response.status_code, 200)
+        return response
+
+    def test_without_filter(self):
+        response = self.get()
+        self.assertEqual(len(response.context["page_obj"]), 3)
+        self.assertIsNone(response.context["active_skill"])
+        self.assertEqual(
+            list(response.context["all_skills"]),
+            ["C++", "Django", "Docker", "Python"],
+        )
+        self.assertContains(response, "Фильтр по необходимым навыкам")
+        self.assertNotContains(response, "filter-reset")
+
+    def test_filter_by_skill(self):
+        response = self.get({"skill": "Python"})
+        self.assertEqual(
+            list(response.context["page_obj"]), [self.third, self.project]
+        )
+        self.assertEqual(response.context["active_skill"], "Python")
+        self.assertContains(response, 'class="filter-chip active"')
+        self.assertContains(response, 'href="/projects/list" class="filter-reset"')
+
+    def test_filter_exact_match(self):
+        response = self.get({"skill": "Pyth"})
+        self.assertEqual(len(response.context["page_obj"]), 0)
+        response = self.get({"skill": "python"})
+        self.assertEqual(len(response.context["page_obj"]), 0)
+
+    def test_filter_link_is_urlencoded(self):
+        response = self.get()
+        self.assertContains(response, 'href="?skill=C%2B%2B"')
+        response = self.get({"skill": "C++"})
+        self.assertEqual(list(response.context["page_obj"]), [self.third])
+
+    def test_pagination_keeps_filter(self):
+        for i in range(13):
+            Project.objects.create(name=f"P{i}", owner=self.owner).skills.add(
+                self.docker
+            )
+        response = self.get({"skill": "Docker"})
+        self.assertEqual(len(response.context["page_obj"]), 12)
+        self.assertEqual(response.context["query_prefix"], "skill=Docker&")
+        self.assertContains(response, 'href="?skill=Docker&amp;page=2"')
+        response = self.get({"skill": "Docker", "page": 2})
+        self.assertEqual(len(response.context["page_obj"]), 2)
