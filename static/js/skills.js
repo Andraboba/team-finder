@@ -159,7 +159,16 @@
       const chip = document.createElement("span");
       chip.className = "skill-chip";
       chip.dataset.id = id;
-      chip.innerHTML = `${name} <button type="button" class="remove-skill-btn" aria-label="Удалить" title="Удалить">×</button>`;
+      // Название навыка вводит пользователь, поэтому вставляем его как текст,
+      // а не через innerHTML.
+      chip.appendChild(document.createTextNode(`${name} `));
+      const removeBtn = document.createElement("button");
+      removeBtn.type = "button";
+      removeBtn.className = "remove-skill-btn";
+      removeBtn.setAttribute("aria-label", "Удалить");
+      removeBtn.title = "Удалить";
+      removeBtn.textContent = "×";
+      chip.appendChild(removeBtn);
 
       container.insertBefore(chip, addBtn);
 

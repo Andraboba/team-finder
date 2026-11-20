@@ -50,26 +50,6 @@
                 {% endif %}
         </div>
         <div class="project-actions">
-            {% if user.is_authenticated %}
-            <button
-                    class="black-button project-fav-icon {% if project.id in favorite_ids %}favorite{% else %}not-favorite{% endif %}"
-                    data-project-id="{{ project.id }}"
-                    data-fav="{% if project.id in favorite_ids %}true{% else %}false{% endif %}"
-                    title="Добавить в избранное"
-            >
-                {% include 'includes/svg/heart.html' %}
-            </button>
-            {% else %}
-            <button
-                    class="black-button project-fav-icon not-favorite"
-                    data-project-id="{{ project.id }}"
-                    data-fav="false"
-                    data-auth="false"
-                    title="Войдите, чтобы добавить в избранное"
-            >
-                {% include 'includes/svg/heart.html' %}
-            </button>
-            {% endif %}
             <a href="#"
                class="black-button black-button-share share-button"
                data-url="/projects/{{ project.id }}">
@@ -129,7 +109,6 @@
         {% endfor %}
         </div>
     </div>
-    {% include 'includes/project-fav-toggle.js' %}
 </div>
 {% endblock %}
 {% endwith %}
