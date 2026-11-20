@@ -11,6 +11,7 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 
 from projects.models import Project
+from users.models import Skill
 
 User = get_user_model()
 
@@ -108,17 +109,17 @@ PARTICIPATIONS = {
     "petr@example.com": ["Портфолио-конструктор"],
 }
 
-# email пользователя -> названия избранных проектов
-FAVORITES = {
-    "maria@yandex.ru": ["Портфолио-конструктор", "Домашний CI-сервер"],
-    "ivan@example.com": ["Трекер привычек", "Дизайн-система для НКО"],
-    "olga@example.com": ["Трекер привычек"],
-    "petr@example.com": ["Бот для книжного клуба", "Портфолио-конструктор"],
+# email пользователя -> навыки (навыки, которых нет в БД, создаются)
+SKILLS = {
+    "maria@yandex.ru": ["Python", "Django", "PostgreSQL", "Git"],
+    "ivan@example.com": ["JavaScript", "React", "TypeScript", "Git"],
+    "olga@example.com": ["Figma", "UX/UI", "HTML/CSS"],
+    "petr@example.com": ["Docker", "Linux", "CI/CD", "Python", "PostgreSQL"],
 }
 
 
 class Command(BaseCommand):
-    help = "Создаёт суперпользователя, тестовых пользователей, проекты, участия и избранное."
+    help = "Создаёт суперпользователя, тестовых пользователей, проекты, участия и навыки."
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -170,7 +171,8 @@ class Command(BaseCommand):
             for name in names:
                 projects[name].participants.add(users[email])
 
-        for email, names in FAVORITES.items():
-            users[email].favorites.add(*(projects[name] for name in names))
+        for email, names in SKILLS.items():
+            skills = [Skill.objects.get_or_create(name=name)[0] for name in names]
+            users[email].skills.add(*skills)
 
         self.stdout.write(self.style.SUCCESS("Тестовые данные загружены."))

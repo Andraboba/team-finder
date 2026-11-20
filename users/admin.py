@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.forms import UserChangeForm, UserCreationForm
 
-from .models import User
+from .models import Skill, User
 
 
 class AdminUserCreationForm(UserCreationForm):
@@ -31,7 +31,7 @@ class UserAdmin(BaseUserAdmin):
     search_fields = ("email", "name", "surname", "phone")
     ordering = ("-id",)
     readonly_fields = ("date_joined", "last_login")
-    filter_horizontal = ("favorites", "groups", "user_permissions")
+    filter_horizontal = ("skills", "groups", "user_permissions")
 
     fieldsets = (
         (None, {"fields": ("email", "password")}),
@@ -39,7 +39,7 @@ class UserAdmin(BaseUserAdmin):
             "Личные данные",
             {"fields": ("name", "surname", "avatar", "phone", "github_url", "about")},
         ),
-        ("Избранное", {"fields": ("favorites",)}),
+        ("Навыки", {"fields": ("skills",)}),
         (
             "Права доступа",
             {
@@ -63,3 +63,10 @@ class UserAdmin(BaseUserAdmin):
             },
         ),
     )
+
+
+@admin.register(Skill)
+class SkillAdmin(admin.ModelAdmin):
+    list_display = ("id", "name")
+    list_display_links = ("id", "name")
+    search_fields = ("name",)

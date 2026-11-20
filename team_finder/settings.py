@@ -53,7 +53,7 @@ ROOT_URLCONF = "team_finder.urls"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        # Используются шаблоны варианта 1 (перенесены из templates_var1).
+        # Используются шаблоны варианта 2 (перенесены из templates_var2).
         "DIRS": [BASE_DIR / "templates"],
         "APP_DIRS": True,
         "OPTIONS": {
@@ -61,7 +61,6 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
-                "projects.context_processors.favorite_ids",
             ],
         },
     },

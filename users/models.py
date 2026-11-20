@@ -40,6 +40,20 @@ class UserManager(BaseUserManager):
         return self._create_user(email, password, **extra_fields)
 
 
+class Skill(models.Model):
+    """Навык (технология), которым может владеть пользователь."""
+
+    name = models.CharField("Название", max_length=124, unique=True)
+
+    class Meta:
+        verbose_name = "Навык"
+        verbose_name_plural = "Навыки"
+        ordering = ("name",)
+
+    def __str__(self):
+        return self.name
+
+
 def avatar_upload_to(instance, filename):
     extension = filename.rsplit(".", 1)[-1].lower() if "." in filename else "png"
     return f"avatars/avatar_{uuid.uuid4()}.{extension}"
@@ -59,10 +73,13 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_active = models.BooleanField("Активен", default=True)
     is_staff = models.BooleanField("Администратор", default=False)
     date_joined = models.DateTimeField("Дата регистрации", auto_now_add=True)
-    favorites = models.ManyToManyField(
-        "projects.Project",
-        verbose_name="Избранные проекты",
-        related_name="interested_users",
+    # В задании поле названо «внешним ключом», но пользователь может владеть
+    # многими навыками, а навык — многими пользователями (skill.users),
+    # поэтому это связь «многие ко многим».
+    skills = models.ManyToManyField(
+        Skill,
+        verbose_name="Навыки",
+        related_name="users",
         blank=True,
     )
 

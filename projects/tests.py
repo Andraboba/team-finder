@@ -64,9 +64,13 @@ class ProjectPagesTests(ProjectTestCase):
         response = self.client.get(reverse("projects:project_detail", args=[999]))
         self.assertEqual(response.status_code, 404)
 
-    def test_anonymous_sees_login_prompt_heart(self):
+    def test_no_favorites_in_variant_2(self):
+        # В варианте 2 нет «Избранного»: ни сердечка, ни ссылки в меню.
+        self.client.force_login(self.other)
         response = self.client.get(reverse("projects:project_list"))
-        self.assertContains(response, 'data-auth="false"')
+        self.assertNotContains(response, "project-fav-icon")
+        self.assertNotContains(response, "/projects/favorites")
+        self.assertEqual(self.client.get("/projects/favorites/").status_code, 404)
 
 
 class CreateEditProjectTests(ProjectTestCase):
@@ -198,52 +202,3 @@ class ToggleParticipateTests(ProjectTestCase):
         response = self.client.post(self.url())
         self.assertEqual(response.status_code, 401)
         self.assertEqual(self.project.participants.count(), 1)
-
-
-class FavoritesTests(ProjectTestCase):
-    def url(self, project=None):
-        return reverse(
-            "projects:toggle_favorite", args=[(project or self.project).id]
-        )
-
-    def test_toggle_favorite(self):
-        self.client.force_login(self.other)
-        response = self.client.post(self.url())
-        self.assertEqual(response.json(), {"status": "ok", "favorited": True})
-        self.assertIn(self.project, self.other.favorites.all())
-        self.assertIn(self.other, self.project.interested_users.all())
-
-        response = self.client.post(self.url())
-        self.assertEqual(response.json(), {"status": "ok", "favorited": False})
-        self.assertNotIn(self.project, self.other.favorites.all())
-
-    def test_toggle_favorite_anonymous(self):
-        response = self.client.post(self.url())
-        self.assertEqual(response.status_code, 401)
-        self.assertEqual(response.json()["status"], "error")
-        self.assertIn("login_url", response.json())
-
-    def test_toggle_favorite_404(self):
-        self.client.force_login(self.other)
-        response = self.client.post(reverse("projects:toggle_favorite", args=[999]))
-        self.assertEqual(response.status_code, 404)
-
-    def test_favorites_page_shows_only_own_favorites(self):
-        second = Project.objects.create(name="Второй", owner=self.owner)
-        self.other.favorites.add(self.project)
-        self.owner.favorites.add(second)
-        self.client.force_login(self.other)
-        response = self.client.get(reverse("projects:favorites"))
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(list(response.context["projects"]), [self.project])
-        self.assertTemplateUsed(response, "projects/favorite_projects.html")
-
-    def test_favorites_page_requires_login(self):
-        response = self.client.get(reverse("projects:favorites"))
-        self.assertEqual(response.status_code, 302)
-
-    def test_heart_marked_for_favorite(self):
-        self.other.favorites.add(self.project)
-        self.client.force_login(self.other)
-        response = self.client.get(reverse("projects:project_list"))
-        self.assertContains(response, 'data-fav="true"')

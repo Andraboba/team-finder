@@ -1,5 +1,3 @@
-from functools import wraps
-
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
@@ -7,6 +5,8 @@ from django.http import HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_http_methods, require_POST
+
+from users.decorators import login_required_json
 
 from .forms import ProjectForm
 from .models import Project
@@ -18,25 +18,6 @@ def _projects_queryset():
         .prefetch_related("participants")
         .order_by("-created_at", "-id")
     )
-
-
-def login_required_json(view):
-    """Для AJAX-эндпоинтов: анониму возвращаем 401 с JSON вместо редиректа."""
-
-    @wraps(view)
-    def wrapper(request, *args, **kwargs):
-        if not request.user.is_authenticated:
-            return JsonResponse(
-                {
-                    "status": "error",
-                    "message": "Войдите или зарегистрируйтесь",
-                    "login_url": settings.LOGIN_URL,
-                },
-                status=401,
-            )
-        return view(request, *args, **kwargs)
-
-    return wrapper
 
 
 @ensure_csrf_cookie
@@ -52,13 +33,6 @@ def project_list(request):
         "query_prefix": "",
     }
     return render(request, "projects/project_list.html", context)
-
-
-@ensure_csrf_cookie
-@login_required
-def favorite_projects(request):
-    projects = _projects_queryset().filter(interested_users=request.user)
-    return render(request, "projects/favorite_projects.html", {"projects": projects})
 
 
 @ensure_csrf_cookie
@@ -137,17 +111,3 @@ def toggle_participate(request, project_id):
             "participants_count": project.participants.count(),
         }
     )
-
-
-@require_POST
-@login_required_json
-def toggle_favorite(request, project_id):
-    project = get_object_or_404(Project, pk=project_id)
-    user = request.user
-    if user.favorites.filter(pk=project.pk).exists():
-        user.favorites.remove(project)
-        favorited = False
-    else:
-        user.favorites.add(project)
-        favorited = True
-    return JsonResponse({"status": "ok", "favorited": favorited})
