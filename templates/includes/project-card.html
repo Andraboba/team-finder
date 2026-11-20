@@ -14,27 +14,6 @@
                     <small class="project-date">{{ project.created_at|date:"d.m.Y" }}</small>
                 </div>
             </div>
-            {% if user.is_authenticated %}
-            <button
-                    class="project-fav-icon {% if project.id in favorite_ids %}favorite{% else %}not-favorite{% endif %}"
-                    data-project-id="{{ project.id }}"
-                    data-fav="{% if project.id in favorite_ids %}true{% else %}false{% endif %}"
-                    title="Добавить в избранное"
-            >
-                {% include 'includes/svg/heart.html' %}
-            </button>
-            {% else %}
-            {# Аноним видит сердечко, но при клике получает просьбу войти #}
-            <button
-                    class="project-fav-icon not-favorite"
-                    data-project-id="{{ project.id }}"
-                    data-fav="false"
-                    data-auth="false"
-                    title="Войдите, чтобы добавить в избранное"
-            >
-                {% include 'includes/svg/heart.html' %}
-            </button>
-            {% endif %}
         </div>
 
         <h3 class="project-card-title"><a href="/projects/{{ project.id }}">{{ project.name }}</a></h3>
